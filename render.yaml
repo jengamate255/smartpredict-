@@ -4,12 +4,10 @@ services:
     env: node
     plan: starter
     buildCommand: |
-      cd packages/server
-      npm install
-      npm run build
+      cd packages/engine && npm install && npm run build
+      cd ../server && npm install && npm run build
     startCommand: |
-      cd packages/server
-      npm start
+      cd packages/server && npm start
     envVars:
       - key: PORT
         value: 3000
