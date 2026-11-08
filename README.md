@@ -204,3 +204,103 @@ Two demo traders start with play-money points (2,500 and 1,800).
 - Price alerts and market-close reminders (push notifications)
 - Multi-outcome market UI improvements
 - Advanced charting (1D, 1W, 1M, All)
+
+## Deploy to Render
+
+Render hosts the backend as a single-instance Node.js service. Single-instance matters because the matching engine is in-memory and must be restored from the database on each restart.
+
+### Render service
+
+`render.yaml` at the workspace root defines the service. Connect this GitHub repository in Render → New → Blueprint → `smartpredict/render.yaml`.
+
+### Required environment variables
+
+Set these in Render → Environment Variables:
+
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `SUPABASE_URL` | `https://vonkqyiczeqhuqhahsxm.supabase.co` | From Supabase Settings → API |
+| `SUPABASE_SERVICE_KEY` | `<service-role-key>` | Keep secret; do not commit |
+| `NODE_ENV` | `production` | |
+| `REAL_MONEY_ENABLED` | `false` | Paper trading only |
+
+### Steps
+
+1. Push source to GitHub (done once):
+   ```bash
+   git add -A
+   git commit -m "feat: deployment ready"
+   git push origin main
+   ```
+2. Create a web service in Render connected to `jengamate255/smartpredict-`.
+3. Render uses `render.yaml` automatically (Blueprint).
+4. Add `SUPABASE_SERVICE_KEY` manually — it is not in Git.
+5. Run the Supabase migration once:
+   - Go to https://vonkqyiczeqhuqhahsxm.supabase.co → SQL Editor
+   - Paste `packages/server/scripts/seed.sql`
+   - Click Run
+6. Seed data:
+   - Render → Shell → `cd packages/server && npm run db:seed`
+   - Or run locally with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set.
+
+### Verification
+
+- `GET https://<service>.onrender.com/api/markets` → 12 open markets
+- `POST /api/auth/send-otp` with a phone number → OTP sent (dev: code visible in Render logs)
+
+## Deploy the mobile app
+
+### Standalone Android APK (Emulator / direct install)
+
+From this machine:
+
+```powershell
+cd packages/mobile
+npm install
+npx expo prebuild --platform android --no-install
+cd android
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot'
+$env:ANDROID_HOME='C:\Android\Sdk'
+.\gradlew.bat assembleDebug --no-daemon -PreactNativeArchitectures=x86_64
+```
+
+APK output:
+`packages/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+
+Install on any Android emulator or device:
+
+```powershell
+adb install -r path/to/app-debug.apk
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:3000 tcp:3000
+```
+
+### Production mobile build (EAS)
+
+For distribution to other phones via Google Play Store:
+
+1. Install EAS CLI:
+   ```bash
+   npm install -g eas-cli
+   ```
+2. Configure app metadata in `packages/mobile/app.json` (name, slug, package).
+3. Configure `EXPO_PUBLIC_API_URL` to your Render backend:
+   ```bash
+   EXPO_PUBLIC_API_URL=https://<your-render-service>.onrender.com/api
+   ```
+4. Build:
+   ```bash
+   cd packages/mobile
+   eas build --platform android --profile production
+   ```
+
+### Pointing the app at your live backend
+
+The mobile app reads `EXPO_PUBLIC_API_URL` (or `localhost:3000/api` in dev mode on Android emulator via `10.0.2.2`). Update it to your Render service URL so other phones can connect from any network.
+
+## Security & compliance reminders
+
+- Never commit `.env`, `.env.*`, signing keys, credentials, or build artifacts. These are blocked by `.gitignore`.
+- `SUPABASE_SERVICE_KEY` is server-only and must never ship in the mobile app.
+- Politics markets remain disabled until Gaming Board of Tanzania review.
+- Points are paper trading points only — no real monetary value.

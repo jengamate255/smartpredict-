@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: smartpredict-api
+    env: node
+    plan: starter
+    buildCommand: |
+      cd packages/server
+      npm install
+      npm run build
+    startCommand: |
+      cd packages/server
+      npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        value: https://vonkqyiczeqhuqhahsxm.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: REAL_MONEY_ENABLED
+        value: false
