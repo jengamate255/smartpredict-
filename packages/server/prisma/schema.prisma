@@ -1,0 +1,228 @@
+// prisma/schema.prisma
+// SmartPredict database schema — paper trading prediction market for Tanzania
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Feature flags — gates real-money paths (default off)
+model FeatureFlag {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @default(now())
+  updatedBy String   @default("system")
+}
+
+// Users — phone number auth (OTP), play-money balances
+model User {
+  id            String   @id @default(cuid())
+  phoneNumber   String   @unique
+  name          String?
+  balance       Int      @default(1000) // starting play-money points
+  lockedBalance Int      @default(0)    // points escrowed in open orders
+  role          String   @default("user") // user | market_maker | admin
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orders       Order[]
+  positions    Position[]
+  balances     BalanceChange[]
+  comments     Comment[]
+  commentLikes CommentLike[]
+  tradesAsBuyer Trade[]   @relation("TradeBuyer")
+  tradesAsSeller Trade[]  @relation("TradeSeller")
+  auditLog     AuditLog[]
+  sessions     Session[]
+}
+
+// Markets — binary or multi-outcome, with written contract spec
+model Market {
+  id                  String   @id @default(cuid())
+  question            String
+  category            String   // uchumi | michezo | hewa | teknolojia | siasa
+  status              String   @default("open") // open | closed | settled | voided
+  outcomeType         String   @default("binary") // binary | multi
+  resolutionSource    String   // official data source name
+  resolutionSourceUrl String
+  closeAt             DateTime
+  settledAt           DateTime?
+  settledResult       Json?    // official value (e.g. {"price": 2750} or {"winner": "YES"})
+  voidedAt            DateTime?
+  voidedReason        String?
+  createdBy           String   // admin cuid
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  outcomes    MarketOutcome[]
+  orders      Order[]
+  trades      Trade[]
+  positions   Position[]
+  comments    Comment[]
+  auditLog    AuditLog[]
+}
+
+// Market outcomes — for binary: YES / NO. For multi: range buckets.
+model MarketOutcome {
+  id        String   @id @default(cuid())
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  name      String   // "YES" | "NO" | "2600-2700" | "2700-2800" ...
+  order     Int      @default(0)
+  winning   Boolean  @default(false)
+  orders    Order[]
+  trades    Trade[]
+  positions Position[]
+
+  @@index([marketId])
+}
+
+// Orders — limit orders only in this phase (market orders can be added later)
+model Order {
+  id            String   @id @default(cuid())
+  marketId      String
+  market        Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outcomeId     String
+  outcome       MarketOutcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  side          String   @default("buy") // buy | sell
+  price         Int      // 1-99
+  qty           Int      // whole shares
+  filledQty     Int      @default(0)
+  locked        Int      // points escrowed (worst-case cost)
+  status        String   @default("open") // open | partially_filled | filled | cancelled
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  trades   Trade[]
+  auditLog AuditLog[]
+
+  @@index([marketId, status])
+  @@index([userId, status])
+}
+
+// Trades — executed matches
+model Trade {
+  id          String   @id @default(cuid())
+  marketId    String
+  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  buyerId     String
+  buyer       User     @relation("TradeBuyer", fields: [buyerId], references: [id])
+  sellerId    String
+  seller      User     @relation("TradeSeller", fields: [sellerId], references: [id])
+  outcomeId   String
+  outcome     MarketOutcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  price       Int      // execution price (resting order price)
+  qty         Int
+  createdAt   DateTime @default(now())
+
+  auditLog AuditLog[]
+
+  @@index([marketId, createdAt])
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+// Positions — user's YES/NO (or multi-outcome) shares per market
+model Position {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  outcomeId String
+  outcome   MarketOutcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  qty       Int      @default(0) // net shares held
+  avgPrice  Int      @default(0) // average entry price
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, marketId, outcomeId])
+}
+
+// Balance changes — append-only ledger of every credit/debit
+model BalanceChange {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int      // positive = credit, negative = debit
+  reason    String   // deposit | trade_escrow_lock | trade_escrow_release | settlement_payout | void_refund | order_cancel_refund
+  reference String?  // tradeId | orderId | settlementId
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Comments — on markets, with replies and likes
+model Comment {
+  id        String   @id @default(cuid())
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?  // reply to another comment
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  content   String
+  likes     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  replies    Comment[] @relation("CommentReplies")
+  likesRel   CommentLike[]
+  auditLog   AuditLog[]
+
+  @@index([marketId, createdAt])
+  @@index([parentId])
+}
+
+model CommentLike {
+  id        String   @id @default(cuid())
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([commentId, userId])
+}
+
+// Audit log — append-only, every order/trade/balance/settlement
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  marketId  String?
+  market    Market?  @relation(fields: [marketId], references: [id], onDelete: SetNull)
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  tradeId   String?
+  trade     Trade?   @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  action    String   // order_place | order_fill | order_cancel | trade | settlement | void | balance_change | comment
+  entity    String   // order | trade | position | balance | market | comment
+  entityId  String?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([marketId])
+}
+
+// Sessions — for OTP/auth sessions
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

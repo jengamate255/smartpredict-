@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "smartpredict",
+    "displayName": "SmartPredict",
+    "version": "1.0.0",
+    "slug": "smartpredict",
+    "splash": {
+      "backgroundColor": "#f9fafb"
+    },
+    "ios": {
+      "bundleIdentifier": "co.tz.smartpredict"
+    },
+    "android": {
+      "package": "co.tz.smartpredict"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font"
+    ]
+  }
+}

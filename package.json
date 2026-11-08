@@ -1,0 +1,22 @@
+{
+  "name": "smartpredict",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SmartPredict — Forecasting and prediction market app for Tanzania (paper trading)",
+  "workspaces": [
+    "packages/server",
+    "packages/engine",
+    "packages/mobile"
+  ],
+  "scripts": {
+    "secrets:check": "node scripts/check-secrets.cjs",
+    "dev:server": "cd packages/server && npm run dev",
+    "test:engine": "cd packages/engine && npm test",
+    "db:generate": "cd packages/server && npx prisma generate",
+    "db:push": "cd packages/server && npx prisma db push",
+    "db:seed": "cd packages/server && npx tsx scripts/seed.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
