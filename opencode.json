@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "description": "SmartPredict project configuration",
+  "model": "ollama/qwen3.5-coder:9b",
+  "default_agent": "build",
+
+  "mcp": {
+    "servers": {}
+  },
+
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      "**/node_modules/**",
+      "dist/**",
+      "**/dist/**",
+      "build/**",
+      "**/build/**",
+      "*.log",
+      "*.apk",
+      "*.aab"
+    ]
+  }
+}
